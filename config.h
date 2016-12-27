@@ -1,6 +1,8 @@
-//network config
-const char* ssid     = "ssid";
-const char* password = "pass";
+const char* tshost = "api.thingspeak.com";
+const char* channelId = "";
 
-const char* host = "api.thingspeak.com";
-const char* channelId = "channel";
+const char* hostMakerChannel = "maker.ifttt.com";
+const char* keyMakerChannel = "";
+
+const char* dweetHost = "www.dweet.io";
+const char* dweetThing = "";

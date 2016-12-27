@@ -1,66 +1,141 @@
-//configuration.h file
-//const char* ssid     = "ssid";
-//const char* password = "pass";
-//
-//const char* host = "api.thingspeak.com";
-//const char* channelId = "channel";
-
-
+/*
+  To upload through terminal you can use: curl -F "image=@firmware.bin" garagedoor-webupdate.local/update
+  Thanks to https://github.com/tzapu/WiFiManager
+  Thanks to https://github.com/JoaoLopesF/RemoteDebug
+*/
 #include "configuration.h"
-#include "math.h"
-#include <Wire.h>
+#include <ESP8266WiFi.h>
+//#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <ESP8266HTTPUpdateServer.h>
 
+// Remote debug over telnet - not recommended for production, only for development
+#include "RemoteDebug.h"        //https://github.com/JoaoLopesF/RemoteDebug
+
+// Wifi Manager
+#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
+#include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
+
+//web update OTA
+const char* host = "garagedoor-webupdate";
+//const char* ssid = "";
+//const char* password = "";
+
+ESP8266WebServer httpServer(80);
+ESP8266HTTPUpdateServer httpUpdater;
+
+//Remote Debug
+RemoteDebug Debug;
+int count = 0;
+
+//Garage Door 
 const int RED = 15;  //RED
 const int GREEN = 12; //GREEN
 const int BLUE = 13; //BLUE
 
-#include <ESP8266WiFi.h>
-#include "DHT.h"
-
-//#define DHTPIN 2 //GPIO2
-#define DHTPIN 14 //GPIO14
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
-
 String writeAPIKey = channelId;
-
-float h;
-float t;
-float f;
-
-//light sensor
-const int analogInPin = A0;
-int sensorValue = 0;        // value read from the pot
-
 bool prevIsOpen = -1;
 bool isOpen = 0;
-
 bool is1stTime = true;
-
-//long prevMillisMaker = -99999999;
-//long prevMillisUpdateDweet = -99999999;
-
 long prevMillisMaker = 0;
 long prevMillisUpdateDweet = 0;
-
 long updateMakerInterval = 30*60000;
 long updateDweetInterval = 5000;
 
 const int pinSwitch = 5; //Pin Reed GPIO4
 int StatoSwitch = 0;
 
-void setup()
-{
+void setup(void){
+
+  setupNetwork();
+  
   pinMode(pinSwitch, INPUT);
-  dht.begin();
-  connectWifi();
-  readSensorData();
-  /// log reset
-  //updateMakerChannel(true);
+  //YOUR SETUP CODE GOES HERE
+  
+  // initialize digital pin 13 as an output.
+  pinMode(RED, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+  pinMode(BLUE, OUTPUT);
+  digitalWrite(RED, LOW);
+  digitalWrite(GREEN, LOW);
+  digitalWrite(BLUE, LOW);
+  
+  //YOUR SETUP CODE ENDS HERE
 }
 
-void loop()
-{
+void loop(void){
+  //Web Server
+  httpServer.handleClient();
+
+  //YOUR LOOP CODE GOES HERE
+  
+  garageDoorBusinessLogic();
+  
+  //YOUR LOOP CODE ENDS HERE
+  
+  // Remote debug over telnet
+  Debug.handle();
+}
+
+void setupNetwork() {
+  //Wifi Manager
+  WiFiManager wifiManager;
+  //first parameter is name of access point, second is the password
+//  wifiManager.autoConnect();
+
+  //we don't need wifi here as the wifi manager is taking care of the connection
+    
+//  Serial.begin(115200);
+//  Serial.println();
+//  Serial.println("Booting Sketch...");
+//  WiFi.mode(WIFI_AP_STA);
+//  WiFi.begin(ssid, password);
+//
+//  while(WiFi.waitForConnectResult() != WL_CONNECTED){
+//    WiFi.begin(ssid, password);
+//    Serial.println("WiFi failed, retrying.");
+//  }
+
+  MDNS.begin(host);
+
+  httpUpdater.setup(&httpServer);
+  httpServer.begin();
+
+  MDNS.addService("http", "tcp", 80);
+  Serial.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", host);
+
+  // Initialize the telnet server of RemoteDebug  
+  Debug.begin("Telnet_HostName"); // Initiaze the telnet server
+  // OR
+  Debug.begin(host); // Initiaze the telnet server - HOST_NAME is the used in MDNS.begin
+  
+  Debug.setResetCmdEnabled(true); // Enable the reset command
+  //Debug.showTime(true); // To show time
+  // Debug.showProfiler(true); // To show profiler - time between messages of Debug  
+}
+
+void printMACAddress() {
+  if (Debug.ative(Debug.DEBUG)) {    
+    byte mac[6];
+    WiFi.macAddress(mac);
+    Debug.print("MAC: ");
+    Debug.print(mac[0],HEX);
+    Debug.print(":");
+    Debug.print(mac[1],HEX);
+    Debug.print(":");
+    Debug.print(mac[2],HEX);
+    Debug.print(":");
+    Debug.print(mac[3],HEX);
+    Debug.print(":");
+    Debug.print(mac[4],HEX);
+    Debug.print(":");
+    Debug.println(mac[5],HEX);
+  }  
+}
+
+void garageDoorBusinessLogic() {
   delay(100);
   ledsOff();
   //if ((unsigned long)(millis() - previousMillis) >= interval)
@@ -98,8 +173,10 @@ void loop()
   //maker channel update logic whenever status change
   if (isOpen != prevIsOpen)
   {
-    //Serial.println("status change");
-    
+    Serial.println("status change");
+    if (Debug.ative(Debug.DEBUG)) {
+      Debug.println("status change");
+    }
     //update maker channel (status change notification) 
     if (is1stTime)
     {
@@ -122,48 +199,34 @@ void loop()
   {
     //Serial.println("readerSensor");
     //read sensor data
-    readSensorData();
+    //disable-dht
+    //readSensorData();
     prevMillisMaker = currMillis;
 
     //update thingspeak
     updateThingspeak();
   }  
-}
 
-void connectWifi(){
-  pinMode(RED, OUTPUT);
-  pinMode(GREEN, OUTPUT);
-  pinMode(BLUE, OUTPUT);
-  digitalWrite(RED, LOW);
-  digitalWrite(GREEN, LOW);
-  digitalWrite(BLUE, LOW);
-  
-  Serial.begin(9600);
-  delay(10);
+  //reset after 1 hour - because this damn ESP crashes randomly 
+  if (millis() > 3600000)
+  {
+    Serial.println("going to sleep");
+    if (Debug.ative(Debug.DEBUG)) {
+      Debug.println("going to sleep");
+    }
 
-  // We start by connecting to a WiFi network
-  digitalWrite(BLUE, HIGH);
-  Serial.println();
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  
-  WiFi.begin(ssid, password);
-  
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+    //force arduino restart!!!
+    restart();
   }
-
-  Serial.println("");
-  Serial.println("WiFi connected");  
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  digitalWrite(BLUE, LOW);
-  blinkLed(BLUE);
+}
+void restart() {
+  ESP.deepSleep(1000000, WAKE_RF_DEFAULT); // Sleep for 1 sec
 }
 
 void updateThingspeak(){
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("updateThingspeak method");
+  }
   //Serial.print("updateThingspeak method");
 
   //Serial.print("connecting to ");
@@ -172,26 +235,20 @@ void updateThingspeak(){
   // Use WiFiClient class to create TCP connections
   WiFiClient client;
   const int httpPort = 80;
-  while (!client.connect(host, httpPort)) {
-    Serial.println("connection failed");
-    blinkLed(RED);
-    //return;
-    connectWifi();
-  }
+  client.connect(tshost, httpPort);
   
   // We now create a URI for the request
-  sensorValue = analogRead(analogInPin);
   String tsData = "field1=";
   tsData += isOpen;
   tsData += "&field2=";
-  tsData += t;
+  tsData += 0;
   tsData += "&field3=";
-  tsData += h;
+  tsData += 0;
   tsData += "&field4=";
   tsData += millis();
   
-  //Serial.print("connected TS. isOpen=");
-  //Serial.println(isOpen);
+  Serial.print("connected TS. isOpen=");
+  Serial.println(isOpen);
   client.print("POST /update HTTP/1.1\n");
   client.print("Host: api.thingspeak.com\n");
   client.print("Connection: close\n");
@@ -204,7 +261,11 @@ void updateThingspeak(){
   client.print(tsData);
   delay(50);
   
-  //Serial.println("thingspeak updated");
+  Serial.println("thingspeak updated");
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("thingspeak updated");
+  }
+
   //blinkLed(GREEN);
   //Serial.println("closing connection");
   //delay(2000);
@@ -213,15 +274,13 @@ void updateThingspeak(){
 void updateMakerChannel(bool isFirstTime){
   //Serial.print("connecting to ");
   //Serial.println(hostMakerChannel);
-  
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("updateMakerChannel method");
+  }
   // Use WiFiClient class to create TCP connections
   WiFiClient client;
   const int httpPort = 80;
-  if (!client.connect(hostMakerChannel, httpPort)) {
-    Serial.println("connection failed");
-    blinkLed(RED);
-    return;
-  }
+  client.connect(hostMakerChannel, httpPort);
   
   // We now create a URI for the request
   String url;
@@ -245,7 +304,7 @@ void updateMakerChannel(bool isFirstTime){
     url += isOpen;
   }  
   url += "&value2=";
-  url += t;
+  url += 0;
   url += "&value3=";
   url += millis();
   
@@ -264,7 +323,10 @@ void updateMakerChannel(bool isFirstTime){
   //  Serial.print(line);
   //}
   
-  //Serial.println("maker channel updated");
+  Serial.println("maker channel updated");
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("maker channel updated");
+  }
   //blinkLed(GREEN);
   //Serial.println("closing connection");
   //delay(2000);
@@ -274,27 +336,26 @@ void updateMakerChannel(bool isFirstTime){
 void updateDweet(){
   //Serial.print("connecting to ");
   //Serial.println(dweetHost);
-  
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("updateDweet method");
+  }
   // Use WiFiClient class to create TCP connections
   WiFiClient client;
   const int httpPort = 80;
-  if (!client.connect(dweetHost, httpPort)) {
-    Serial.println("connection failed");
-    blinkLed(RED);
-    return;
-  }
-  
+  client.connect(dweetHost, httpPort);
+
+  int mill = millis();
   // We now create a URI for the request
   String url = "/dweet/for/";
   url+= dweetThing;
   url += "?isOpen=";
   url += isOpen;
   url += "&temperature=";
-  url += t;
+  url += 0;
   url += "&humidity=";
-  url += h;
+  url += 0;
   url += "&millis=";
-  url += millis();
+  url += mill;
   
   //Serial.print("Requesting URL: ");
   //Serial.println(url);
@@ -311,7 +372,10 @@ void updateDweet(){
   //  Serial.print(line);
   //}
   
-  //Serial.println("dweet updated");
+  Serial.println("dweet updated");
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.printf("dweet updated %d\n", mill);
+  }
   //blinkLed(GREEN);
   //Serial.println("closing connection");
   //delay(2000);
@@ -332,94 +396,6 @@ void turnOff(int pin) {
   pinMode(pin, OUTPUT);
   digitalWrite(pin, 1);
 }
-
-void readSensorData() {
-  int tries = 0;
-  do {
-    //Serial.println("xDHTx");
-    delay(250);
-    // Reading temperature or humidity takes about 250 milliseconds!
-    // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-    h = dht.readHumidity();
-    // Read temperature as Celsius (the default)
-    t = dht.readTemperature();
-    // Read temperature as Fahrenheit (isFahrenheit = true)
-    f = dht.readTemperature(true); 
-  } while (isnan(h) || isnan(t) || isnan(f) && tries++ < 8);
-  
-  // Compute heat index in Fahrenheit (the default)
-  //float hif = dht.computeHeatIndex(f, h);
-  // Compute heat index in Celsius (isFahreheit = false)
-  //float hic = dht.computeHeatIndex(t, h, false);
-
-  //Serial.print("Humidity: ");
-  //Serial.print(h);
-  //Serial.print(" %\t");
-  //Serial.print("Temperature: ");
-  //Serial.print(t);
-  //Serial.println(" *C ");
-  //Serial.print(f);
-  //Serial.print(" *F\t");
-  //Serial.print("Heat index: ");
-  //Serial.print(hic);
-  //Serial.print(" *C ");
-  //Serial.print(hif);
-  //Serial.println(" *F");
-}
-
-//void measureDistance()
-//{
-//  digitalWrite(pingPin, LOW);
-//  delayMicroseconds(2);
-//  digitalWrite(pingPin, HIGH);
-//  delayMicroseconds(10);
-//  digitalWrite(pingPin, LOW);
-//
-//  duration = pulseIn(inPin, HIGH);
-//
-//  inches = microsecondsToInches(duration);
-//  indec = (duration - inches * inchconv) * 10 / inchconv;
-//  cm = microsecondsToCentimeters(duration);
-//  cmdec = (duration - cm * cmconv) * 10 / cmconv;
-//  s1 = String(inches) + "." + String(indec) + "in" + "     ";
-//  s2 = String(cm) + "." + String(cmdec) + "cm" + "     ";
-//  //Serial.println(duration);
-//  //Serial.println(s1);
-//  Serial.println(s2);
-//
-//  if (cm > threshold)
-//  {
-//    isOpen = 1;
-//    //Serial.println("---------------------------OPEN");
-//    ledsOff();
-//    digitalWrite(RED, HIGH);
-//  }
-//  else if (cm == 0)
-//  {
-//    isOpen = 1;
-//    //Serial.println("---------------------------ERROR");
-//    ledsOff();
-//    blinkLed(BLUE);
-//    blinkLed(BLUE);
-//  }
-//  else
-//  {
-//    isOpen = 0;
-//    //Serial.println("xxxxxxxxxxxxxxxxxxxxxxxxxxxCLOSED");
-//    ledsOff();
-//    digitalWrite(GREEN, HIGH);
-//  }
-//}
-
-//long microsecondsToInches(long microseconds)
-//{
-//  return microseconds / inchconv;
-//}
-//
-//long microsecondsToCentimeters(long microseconds)
-//{
-//  return microseconds / cmconv;
-//}
 
 void ledsOff() 
 {
