@@ -174,7 +174,9 @@ void garageDoorBusinessLogic() {
   if (isOpen != prevIsOpen)
   {
     Serial.println("status change");
-    
+    if (Debug.ative(Debug.DEBUG)) {
+      Debug.println("status change");
+    }
     //update maker channel (status change notification) 
     if (is1stTime)
     {
@@ -209,6 +211,10 @@ void garageDoorBusinessLogic() {
   if (millis() > 3600000)
   {
     Serial.println("going to sleep");
+    if (Debug.ative(Debug.DEBUG)) {
+      Debug.println("going to sleep");
+    }
+
     //force arduino restart!!!
     restart();
   }
@@ -218,6 +224,9 @@ void restart() {
 }
 
 void updateThingspeak(){
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("updateThingspeak method");
+  }
   //Serial.print("updateThingspeak method");
 
   //Serial.print("connecting to ");
@@ -253,6 +262,10 @@ void updateThingspeak(){
   delay(50);
   
   Serial.println("thingspeak updated");
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("thingspeak updated");
+  }
+
   //blinkLed(GREEN);
   //Serial.println("closing connection");
   //delay(2000);
@@ -261,7 +274,9 @@ void updateThingspeak(){
 void updateMakerChannel(bool isFirstTime){
   //Serial.print("connecting to ");
   //Serial.println(hostMakerChannel);
-  
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("updateMakerChannel method");
+  }
   // Use WiFiClient class to create TCP connections
   WiFiClient client;
   const int httpPort = 80;
@@ -309,6 +324,9 @@ void updateMakerChannel(bool isFirstTime){
   //}
   
   Serial.println("maker channel updated");
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("maker channel updated");
+  }
   //blinkLed(GREEN);
   //Serial.println("closing connection");
   //delay(2000);
@@ -318,12 +336,15 @@ void updateMakerChannel(bool isFirstTime){
 void updateDweet(){
   //Serial.print("connecting to ");
   //Serial.println(dweetHost);
-  
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.println("updateDweet method");
+  }
   // Use WiFiClient class to create TCP connections
   WiFiClient client;
   const int httpPort = 80;
   client.connect(dweetHost, httpPort);
-  
+
+  int mill = millis();
   // We now create a URI for the request
   String url = "/dweet/for/";
   url+= dweetThing;
@@ -334,7 +355,7 @@ void updateDweet(){
   url += "&humidity=";
   url += 0;
   url += "&millis=";
-  url += millis();
+  url += mill;
   
   //Serial.print("Requesting URL: ");
   //Serial.println(url);
@@ -352,6 +373,9 @@ void updateDweet(){
   //}
   
   Serial.println("dweet updated");
+  if (Debug.ative(Debug.DEBUG)) {
+    Debug.printf("dweet updated %d\n", mill);
+  }
   //blinkLed(GREEN);
   //Serial.println("closing connection");
   //delay(2000);
