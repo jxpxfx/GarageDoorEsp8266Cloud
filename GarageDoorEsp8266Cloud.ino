@@ -20,8 +20,8 @@
 
 //web update OTA
 const char* host = "garagedoor-webupdate";
-//const char* ssid = "";
-//const char* password = "";
+const char* ssid = "";
+const char* password = "";
 
 ESP8266WebServer httpServer(80);
 ESP8266HTTPUpdateServer httpUpdater;
@@ -80,23 +80,12 @@ void loop(void){
 }
 
 void setupNetwork() {
+  WiFi.begin(ssid, password);
+  
   //Wifi Manager
   WiFiManager wifiManager;
   //first parameter is name of access point, second is the password
-//  wifiManager.autoConnect();
-
-  //we don't need wifi here as the wifi manager is taking care of the connection
-    
-//  Serial.begin(115200);
-//  Serial.println();
-//  Serial.println("Booting Sketch...");
-//  WiFi.mode(WIFI_AP_STA);
-//  WiFi.begin(ssid, password);
-//
-//  while(WiFi.waitForConnectResult() != WL_CONNECTED){
-//    WiFi.begin(ssid, password);
-//    Serial.println("WiFi failed, retrying.");
-//  }
+  wifiManager.autoConnect();
 
   MDNS.begin(host);
 
